@@ -14,6 +14,12 @@ Arduino, basic soldering skills, ESP8266.
 
 Supports OTA updates. Once you get an OTA capable image flashed, the rest is easy! I custom built a little ruby cgi that serves up an appropriate file for each of your OTA devices.
 
+## Box building
+
+3D print the following three objects (two parts on the box)
+* [Box and lid](https://cad.onshape.com/documents/236ecddb29d40e21a51f65a9/w/93badd7941dea4cabb6956af)
+* [Heart](https://cad.onshape.com/documents/9cdd3718b2206f9a0f2c2e6e/w/646d34386c3647e6e31434b1)
+
 ## Contributing
 
 Small project but please make suggestions, especially in the form of code!
