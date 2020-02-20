@@ -1,0 +1,2 @@
+#!/bin/bash
+/home/sean/dev/arduino-1.8.11/arduino --verify -v Lupercalia.ino
