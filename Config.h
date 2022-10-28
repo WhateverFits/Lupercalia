@@ -3,7 +3,7 @@
 
 #define SERVO_PIN D0
 #define SENSOR_PIN A0
-#define LIGHTLEVEL 175
+#define LIGHTLEVEL 60
 #define ANALOGDELAY 250
 #define DISPLAY_DIO D3
 #define DISPLAY_CLK D5
@@ -12,7 +12,7 @@
 #define MQTT_SERVER "pi4"
 #define MQTT_PORT 1883
 #define MQTT_CHANNEL_PUB "home/" DNSNAME "/state"
-#define MQTT_CHANNEL_SUB "home/" DNSNAME "/control"
+#define MQTT_CHANNEL_SUB "home/" DNSNAME "/#"
 #define MQTT_CHANNEL_LOG "home/" DNSNAME "/log"
 #define MQTT_USER "clockuser"
 #define MQTT_PASSWORD "clockuser"

@@ -6,7 +6,7 @@
 #include <PubSubClient.h>
 #include <Wire.h>
 #include <Servo.h>
-#include <Time.h>
+#include <TimeLib.h>
 #include "SH1106Wire.h"
 #include "OLEDDisplayUi.h"
 #include "Lupercalia.h"
@@ -31,7 +31,7 @@ void stopWiggle() {
   wiggler.write(pos);
 }
 
-void doWiggle(long milliseconds) {
+void doWiggle(unsigned long milliseconds) {
   if (wiggling) {
     if (milliseconds >= lastWiggle + 30 || milliseconds < lastWiggle) {
       wiggler.write(pos);
@@ -45,11 +45,11 @@ void doWiggle(long milliseconds) {
   }
 }
 
-void processLightSensor(long milliseconds) {
+void processLightSensor(unsigned long milliseconds) {
   // Handle the light sensor
   if (milliseconds >= lastTimeAnalog + ANALOGDELAY || milliseconds < lastTimeAnalog) {
     int lightValue = analogRead(SENSOR_PIN);
-    Serial.printf("Light level: %d\n", lightValue);
+    //Serial.printf("Light level: %d\n", lightValue);
     if (!messageRead && lightValue > LIGHTLEVEL) {
       Serial.println("I saw the light!");
       stopWiggle();
@@ -67,7 +67,7 @@ void processLightSensor(long milliseconds) {
   }
 }
 
-void validateWiFi(long milliseconds) {
+bool validateWiFi(unsigned long milliseconds) {
   // Update WiFi status. Take care of rollover
   if (milliseconds >= lastTimeClock + 1000 || milliseconds < lastTimeClock) {
     if (wifiMulti.run() != WL_CONNECTED) {
@@ -85,16 +85,26 @@ void validateWiFi(long milliseconds) {
 
     lastTimeClock = milliseconds;
   }
+
+  return connectedOnce;
 }
 
-void validateMqtt(long milliseconds) {
+void validateMqtt(unsigned long milliseconds) {
   if (!mqttClient.connected()) {
-    if (milliseconds - lastReconnectAttempt > 5000) {
+    if (milliseconds - lastReconnectAttempt > 5000 || lastReconnectAttempt == 0 || milliseconds < lastReconnectAttempt) {
+      Serial.println("MQTT not connected");
       lastReconnectAttempt = milliseconds;
+      Serial.println("MQTT reconnecting");
       // Attempt to reconnect
       if (mqttReconnect()) {
-        lastReconnectAttempt = 0;
+        Serial.println("MQTT reconnected");
       }
+    }
+
+    if (milliseconds - lastReconnectAttempt > 60000) {
+      Serial.println("MQTT disconnecting WiFi");
+      WiFi.disconnect();
+      delay(500);
     }
   } else {
     mqttClient.loop();
@@ -117,9 +127,9 @@ void drawPicture(String data, bool showNow = true) {
   }
 }
 
-const String hexStringToBinString(String value) {
+const String hexStringToBinString(String value, unsigned int length) {
   String returnValue = "";
-  for (int i = 0; i < value.length(); i++) {
+  for (int i = 0; i < length; i++) {
     returnValue += hex_char_to_bin(value[i]);
   }
   return returnValue;
@@ -151,33 +161,33 @@ const String hex_char_to_bin(char c)
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.printf("Inside mqtt callback %d\n", length);
-  String message = (char*)payload;
-  Serial.println(message.length());
-  Serial.println(message.substring(0, length));
-  StaticJsonDocument<1000> doc;
-  DeserializationError err= deserializeJson(doc, message.substring(0, length));
-  String action = doc["Action"];
+  Serial.printf("Inside mqtt callback: %s\n", topic);
+  Serial.println(length);
+
+  String topicString = (char*)topic;
+  topicString = topicString.substring(topicString.lastIndexOf('/')+1);
+
   Serial.print("Action: ");
-  Serial.println(action);
-  if (action == "Message") {
-    outputString(doc["Value"], false);
+  Serial.println(topicString);
+
+  if (topicString == "message") {
+    String message = (char*)payload;
+    message = message.substring(0, length);
+    Serial.println(message);
+    outputString(message.c_str(), false);
     startWiggle();
-  } else if (action == "Clear") {
+  } else if (topicString == "clear") {
     outputString("", true);
     stopWiggle();
-  } else if (action == "Image") {
-    Serial.print("Got image length: ");
-    String imageValue = String((const char *)doc["Value"]);
-    Serial.println(imageValue.length());
-    if (imageValue.length() == (128*64/16)) {
-      drawPicture(hexStringToBinString(imageValue), false);
+  } else if (topicString == "image") {
+    if (length == (128*64/16)) {
+      drawPicture(hexStringToBinString((char *)payload, length), false);
       startWiggle();
     } else {
       outputString("Bad Image", true);
     }
   }
-  if (action == "Update") {
+  if (topicString == "update") {
     WiFiClient updateWiFiClient;
     t_httpUpdate_return ret = ESPhttpUpdate.update(updateWiFiClient, UPDATE_URL);
     switch (ret) {
@@ -267,91 +277,6 @@ void outputString(String msg, bool showNow) {
   }
 }
 
-int findWiFi() {
-  // Connect to a WiFi network
-  Serial.println("Scanning networks");
-  int n = WiFi.scanNetworks();
-  int found = -1;
-  if (n == 0) {
-    Serial.println("no networks found");
-    outputString("No Net", true);
-  }
-  else
-  {
-    Serial.print(n);
-    Serial.println(" networks found");
-    for (int stored = 0; stored < wifiCount && found == -1; stored++) {
-      for (int i = 0; i < n; ++i)
-      {
-        if (WiFi.SSID(i) == ssids[stored])
-        {
-          found = stored;
-          Serial.print("Connecting to ");
-          Serial.println(ssids[found]);
-          outputString("Connecting", true);
-          break;
-        }
-      }
-    }
-  }
-
-  return found;
-}
-
-void connectWiFi(int found) {
-  //Serial.print("Connecting to ");
-  //Serial.println(ssids[found]);
-  #ifdef DNSNAME
-  WiFi.hostname(DNSNAME);
-  #else
-  char buffer[4];
-  uint8_t macAddr[6];
-  WiFi.macAddress(macAddr);
-  sprintf(buffer, "%02x%02x", macAddr[4], macAddr[5]);
-  WiFi.hostname("SunriseLight" + String(buffer));
-  #endif
-  WiFi.begin(ssids[found], passs[found]);
-
-  bool first = true;
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    if (first)
-      outputString("O", true);
-    else
-      outputString("o", true);
-    first != first;
-  }
-
-  outputString(String("Connected ") + ssids[found], true);
-
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  Serial.print("Netmask: ");
-  Serial.println(WiFi.subnetMask());
-  Serial.print("Gateway: ");
-  Serial.println(WiFi.gatewayIP());
-}
-
-void setupWiFi(){
-  int found = -1;
-  bool first = true;
-  while (found == -1) {
-    if (first)
-      outputString("X", true);
-    else
-      outputString("x", true);
-    first != first;
-    found = findWiFi();
-    if (found == -1) {
-      delay(5000);
-    }
-  }
-
-  connectWiFi(found);
-}
-
 void setup() {
   Serial.begin(115200);
   delay(100);
@@ -361,7 +286,6 @@ void setup() {
   display.flipScreenVertically();
   display.setFont(ArialMT_Plain_10);
 
-  //setupWiFi();
   for (int i=0; i < wifiCount; i++) {
     wifiMulti.addAP(ssids[i], passs[i]);
   }
@@ -389,10 +313,10 @@ void setup() {
 
 void loop() {
   // Get the time at the start of this loop
-  long milliseconds = millis();
+  unsigned long milliseconds = millis();
 
   doWiggle(milliseconds);
   processLightSensor(milliseconds);
-  validateWiFi(milliseconds);
-  validateMqtt(milliseconds);
+  if (validateWiFi(milliseconds))
+    validateMqtt(milliseconds);
 }

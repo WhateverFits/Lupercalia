@@ -24,7 +24,7 @@ long lastReconnectAttempt = 0;
 PubSubClient mqttClient(MQTT_SERVER, MQTT_PORT, mqttCallback, mqttWiFiClient);
 DynamicJsonDocument mqttDoc(1024);
 
-SH1106Wire display(0x3c, DISPLAY_DIO, DISPLAY_CLK);
+SH1106Wire display(0x3c, SDA, SCL);
 
 Servo wiggler;
 
